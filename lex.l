@@ -2,7 +2,9 @@
 #include <stdio.h>
 #include "parser.tab.h"
 
-int yywrap(void)
+extern "C" int yyerror(char const*);
+
+extern "C" int yywrap(void)
 {
     return 1;
 }
@@ -15,7 +17,7 @@ void init_string_buffer(void)
 {
     string_buffer            = NULL;
     string_buffer_alloc_size = 4;
-    string_buffer            = calloc(string_buffer_alloc_size, sizeof(char));
+    string_buffer            = (char*)calloc(string_buffer_alloc_size, sizeof(char));
     if (string_buffer == NULL) {
         fprintf(stderr, "おうっふ! mallocできない\n");
         exit(-1);
@@ -27,7 +29,7 @@ void realocation_string_buffer(void)
 {
     if (string_buffer_size > string_buffer_alloc_size) { 
         string_buffer_alloc_size *= 2;
-        string_buffer = realloc(string_buffer, string_buffer_alloc_size + 1);
+        string_buffer = (char*)realloc(string_buffer, string_buffer_alloc_size + 1);
         if (string_buffer == NULL) {
             fprintf(stderr, "おうっふ! remallocできない\n");
             exit(-1);
