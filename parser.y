@@ -1,9 +1,9 @@
 %{
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <unistd.h>
 #include <climits>
-#include <cstring>
 #include <dlfcn.h>
 #include <llvm/Module.h>
 #include <llvm/Function.h>
@@ -63,6 +63,8 @@ block:
 
 line:
 	expression LF
+	|
+	expression
 	;
 
 semicolon:
@@ -103,10 +105,66 @@ int
 yyerror(char const *str)
 {
     extern char *yytext;
-    fprintf(stderr, "おうっふ! 構文エラー '%s'\n", yytext);
+    fprintf(stderr, "おうっふ! 構文エラー %s '%s' \n", str, yytext);
     return 0;
 }
 
+char *source_filename;
+char *cmdline_source;
+int cmdline_source_seek;
+void parse_comandlines(int argc, char **argv)
+{
+    int ch;
+    cmdline_source  = NULL;
+    source_filename = NULL;
+
+    if (argc > 1) {
+        if (argv[1][0] != '-') {
+            source_filename = argv[1];
+            return;
+        }
+    }
+
+    while ((ch = getopt(argc, argv, "e:")) != -1) {
+       switch (ch) {
+        case 'e':
+                  cmdline_source = optarg;
+                  cmdline_source_seek = 0;
+                  break;
+        case '?':
+                  break;
+        default:
+                  break;
+        }
+    }
+    return;
+}
+
+#ifdef _GNU_SOURCE
+ssize_t cmdline_source_read(void *v, char *buf, size_t size)
+#else
+int cmdline_source_read(void *v, char *buf, int size)
+#endif
+{
+    int cmdline_source_len = strlen(cmdline_source);
+    char *current = cmdline_source + cmdline_source_seek;
+    int copy_size;
+
+    if (cmdline_source_len <= cmdline_source_seek) {
+        return 0;
+    }
+
+    if (strlen(current) < size) {
+        copy_size = strlen(current);
+    } else {
+        copy_size = size;
+    }
+
+    memcpy(buf, current, copy_size);
+    buf[copy_size] = '\0';
+    cmdline_source_seek += copy_size;
+    return copy_size;
+}
 
 void register_builtins()
 {
@@ -133,17 +191,30 @@ int main(int argc, char **argv)
 {
     extern int yyparse(void);
     extern FILE *yyin;
- 
-    if (argc == 2) {
-        FILE* fp = fopen(argv[1], "rb");
+
+    parse_comandlines(argc, argv);
+
+    if (cmdline_source != NULL) {
+#ifdef _GNU_SOURCE
+        cookie_io_functions_t io_funcs = { cmdline_source_read, 0, 0, 0 };
+
+        yyin = fopencookie(0, "r", io_funcs);
+#else
+        yyin = fropen(0, cmdline_source_read);
+#endif
+    } else if (source_filename != NULL) {
+        FILE* fp = fopen(source_filename, "rb");
         if (!fp) {
-            fprintf(stderr, "おふっふ! ファイルが開かない! '%s'", argv[1]);
+            fprintf(stderr, "おふっふ! ファイルが開かない! '%s'", source_filename);
             return 255;
         }
         char buf[BUFSIZ];
         while (fgets(buf, sizeof(buf), fp)) {
             if (strncmp(buf, "#!", 2) == 0) {
                 yyin = fp;
+            } else {
+                fclose(fp);
+                yyin = fopen(source_filename, "rb");
             }
             break;
         }
